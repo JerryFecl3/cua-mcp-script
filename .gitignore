@@ -1,0 +1,10 @@
+.runtime/
+dist/
+build/
+cua/
+*.zip
+*.log
+*.dpapi
+__pycache__/
+.env
+*.local.ps1

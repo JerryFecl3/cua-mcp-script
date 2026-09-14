@@ -1,0 +1,55 @@
+name: Publish tested candidate
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run:
+        description: 'Successful Build CUA candidate run ID on main'
+        required: true
+        type: string
+      release_tag:
+        description: 'New release tag, e.g. v0.1.0-cua-0.28.1'
+        required: true
+        type: string
+      test_report:
+        description: 'URL to completed desktop, SSH, Codex and Hermes test report (no credentials)'
+        required: true
+        type: string
+      license_reviewed:
+        description: 'I reviewed bundled license notices and corresponding source availability'
+        required: true
+        type: boolean
+permissions:
+  contents: read
+  actions: read
+jobs:
+  publish:
+    if: inputs.license_reviewed
+    environment: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate provenance and download original candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.candidate_run }}
+          TAG: ${{ inputs.release_tag }}
+          REPORT: ${{ inputs.test_report }}
+        run: |
+          [[ "$RUN" =~ ^[0-9]+$ ]]
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-cua-[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$REPORT" =~ ^https:// ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN" > run.json
+          jq -e '.conclusion == "success" and .head_branch == "main" and .path == ".github/workflows/candidate.yml" and (.event == "schedule" or .event == "workflow_dispatch")' run.json
+          gh run download "$RUN" -n cua-windows-candidate -D dist
+          cd dist && sha256sum -c SHA256SUMS
+      - name: Publish exact tested archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+          REPORT: ${{ inputs.test_report }}
+        run: |
+          printf 'Windows bundle with pinned CUA.\n\nCompatibility report: %s\n\nSee version.json, SHA256SUMS and bundled license notices.\n' "$REPORT" > notes.md
+          gh release create "$TAG" dist/* --target "$(jq -r .head_sha run.json)" --title "$TAG" --notes-file notes.md

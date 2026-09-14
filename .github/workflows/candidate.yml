@@ -1,0 +1,50 @@
+name: Build CUA candidate
+on:
+  schedule:
+    - cron: '25 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      cua_tag:
+        description: 'Exact stable tag (blank = latest stable CUA Driver)'
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: cua-candidate
+  cancel-in-progress: false
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - shell: pwsh
+        run: ./tests/Test-Script.ps1
+      - shell: pwsh
+        run: rustup update stable --no-self-update
+      - name: Verified download and license gate
+        shell: pwsh
+        env:
+          CUA_TAG: ${{ inputs.cua_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $args = @()
+          if ($env:CUA_TAG) { $args = @('--tag', $env:CUA_TAG) }
+          python scripts/package.py @args
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: HTTP compatibility smoke test
+        shell: pwsh
+        run: |
+          $driver = Get-ChildItem build -Filter cua-driver.exe -Recurse | Where-Object FullName -Match 'cua-mcp-script[\\/]cua[\\/]'
+          if (@($driver).Count -ne 1) { throw 'Expected one packaged driver' }
+          ./tests/Test-CuaHttp.ps1 -Driver $driver.FullName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cua-windows-candidate
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
