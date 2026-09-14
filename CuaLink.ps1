@@ -4,25 +4,7 @@ param(
     [switch]$NoPause
 )
 
-# ================= USER SETTINGS =================
-$UseScriptConfig = $false # True: complete preset configuration; false: interactive.
-# Generate a Bearer Token in Windows PowerShell 5.1, then paste the output below:
-# $b = New-Object byte[] 32; $r = [Security.Cryptography.RandomNumberGenerator]::Create()
-# $r.GetBytes($b); $r.Dispose(); [BitConverter]::ToString($b).Replace('-', '')
-# This generates 64 hex characters (256 random bits); it is NOT an SSH login key.
-# To create an SSH login key instead: ssh-keygen -t ed25519
-# Install its .pub public key in Debian ~/.ssh/authorized_keys; keep the private key on Windows.
-# Key mode uses existing OpenSSH identities/config/agent. Unlock passphrase-protected keys
-# in ssh-agent beforehand, because the background tunnel cannot prompt for a passphrase.
-$BearerToken = '' # Required only in preset mode.
-$SshHost = '' # SSH hostname or IP address.
-$SshUser = '' # SSH username.
-$SshAuthMode = 'key'     # Script mode: 'key' or 'password'.
-# Password mode always prompts securely at start; passwords cannot be preset.
-$SshPort = 22            # Required in script mode (1-65535).
-$LocalPort = 19222          # Required in script mode: Windows CUA port.
-$RemotePort = 19222         # Required in script mode: Debian mapped port.
-# =================================================
+# Connection settings live in config.ini; see docs/configuration.md.
 
 $ErrorActionPreference = 'Stop'
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'cua-mcp-script requires Windows PowerShell 5.1 or later on Windows.' }
@@ -58,17 +40,51 @@ function Publish-State($value) {
     $value | ConvertTo-Json | Set-Content "$stateFile.tmp"
     Move-Item -LiteralPath "$stateFile.tmp" -Destination $stateFile -Force
 }
-function Assert-ScriptConfig {
-    $missing = @()
-    foreach ($name in 'BearerToken','SshHost','SshUser') {
-        if ([string]::IsNullOrWhiteSpace((Get-Variable $name -ValueOnly))) { $missing += $name }
+function Read-LinkConfig([string]$Path) {
+    try { $lines = Get-Content -LiteralPath $Path -Encoding UTF8 }
+    catch { throw 'Cannot read config.ini. Copy config.example.ini and edit your settings.' }
+    $values = @{}
+    $section = $false
+    $allowed = @('UseConfig','BearerToken','SshHost','SshUser','SshAuthMode','SshPort','LocalPort','RemotePort')
+    foreach ($line in $lines) {
+        $text = $line.Trim()
+        if (-not $text -or $text.StartsWith(';') -or $text.StartsWith('#')) { continue }
+        if ($text.StartsWith('[')) {
+            if ($text -ne '[CuaLink]' -or $section) { throw 'config.ini must have exactly one [CuaLink] section.' }
+            $section = $true
+            continue
+        }
+        $separator = $text.IndexOf('=')
+        if (-not $section -or $separator -lt 1) { throw 'config.ini: expected Key=Value under [CuaLink].' }
+        $name = $text.Substring(0,$separator).Trim()
+        if ($name -notin $allowed -or $values.ContainsKey($name)) {
+            throw 'config.ini has an unknown or duplicate setting. Refer to config.example.ini; passwords cannot be stored in config.'
+        }
+        $values[$name] = $text.Substring($separator+1).Trim()
     }
-    if ($SshAuthMode -notin 'key','password') { $missing += 'SshAuthMode (key or password)' }
+    if ($values.UseConfig -notin 'true','false') { throw 'config.ini: UseConfig must be true or false (without quotes).' }
+    $values.UseConfig = $values.UseConfig -eq 'true'
+    $settings = [pscustomobject]$values
+    if (-not $settings.UseConfig) { return $settings }
+    foreach ($name in 'BearerToken','SshHost','SshUser','SshAuthMode') {
+        if ($settings.$name -isnot [string] -or [string]::IsNullOrWhiteSpace($settings.$name)) {
+            throw "config.ini: $name is required when UseConfig is true. Fill every setting or set UseConfig to false."
+        }
+    }
+    if ($settings.SshAuthMode -notin 'key','password') { throw 'config.ini: SshAuthMode must be key or password.' }
     foreach ($name in 'SshPort','LocalPort','RemotePort') {
-        $value = Get-Variable $name -ValueOnly
-        if ($null -eq $value -or $value -lt 1 -or $value -gt 65535) { $missing += "$name (1-65535)" }
+        $value = 0
+        if (-not [int]::TryParse($settings.$name,[ref]$value) -or $value -lt 1 -or $value -gt 65535) {
+            throw "config.ini: $name must be an integer between 1 and 65535."
+        }
+        $settings.$name = $value
     }
-    if ($missing.Count) { throw "Script configuration is incomplete: $($missing -join ', '). Fill every setting or set UseScriptConfig to false." }
+    if ($settings.BearerToken.Length -lt 32 -or $settings.BearerToken.Length -gt 4096 -or $settings.BearerToken -match '\s') {
+        throw 'config.ini: BearerToken must contain 32-4096 non-whitespace characters.'
+    }
+    if ($settings.SshHost -notmatch '^[a-zA-Z0-9][a-zA-Z0-9.:-]*$') { throw 'config.ini: Invalid SshHost.' }
+    if ($settings.SshUser -notmatch '^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$') { throw 'config.ini: Invalid SshUser.' }
+    return $settings
 }
 function Show-Connection($state) {
     Write-Host "`n========== MCP CONNECTION =========="
@@ -207,6 +223,11 @@ if ($Action -eq 'worker') {
 $frontendLock = $null
 try {
     $frontendLock = [IO.File]::Open((Join-Path $runtime 'frontend.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+    $userConfigFile = Join-Path $PSScriptRoot 'config.ini'
+    if ($Action -in 'menu','start' -and -not (Test-Path -LiteralPath $userConfigFile)) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'config.example.ini') -Destination $userConfigFile
+        Write-Host 'Created config.ini. Edit it to enable preset configuration.'
+    }
     if ($Action -eq 'menu') {
         Write-Host '1. Start   2. Stop   3. Status'
         switch (Read-Host 'Select [1]') {
@@ -220,8 +241,11 @@ try {
     switch ($Action) {
         'start' {
             if (-not $supervisor) {
-                if ($UseScriptConfig) {
-                    Assert-ScriptConfig
+                $settings = Read-LinkConfig $userConfigFile
+                if ($settings.UseConfig) {
+                    $BearerToken=$settings.BearerToken; $SshHost=$settings.SshHost; $SshUser=$settings.SshUser
+                    $SshAuthMode=$settings.SshAuthMode; $SshPort=$settings.SshPort
+                    $LocalPort=$settings.LocalPort; $RemotePort=$settings.RemotePort
                     if ($SshAuthMode -eq 'key') { $secret=[Security.SecureString]::new() }
                     else {
                         $secret=Read-Host 'SSH password' -AsSecureString

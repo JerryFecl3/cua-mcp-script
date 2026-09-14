@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Move connection settings to config.ini with a UseConfig switch and strict validation.
+- Create config.ini from config.example.ini on first launch; preserve existing configuration on upgrades.
+- Keep passwords interactive and exclude personal config.ini from Git and release bundles.
+- Read configuration only for new starts so invalid configuration cannot block stop/status.
+
 ## 0.2.1
 
 - Include run.cmd in Windows bundles for double-click startup with Windows PowerShell 5.1.

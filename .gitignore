@@ -8,3 +8,4 @@ cua/
 __pycache__/
 .env
 *.local.ps1
+config.ini

@@ -45,7 +45,10 @@ Obtain CUA from [official releases](https://github.com/trycua/cua/releases) and 
 
 ```text
 cua-mcp-script/
+  run.cmd
   CuaLink.ps1
+  config.example.ini      # clean template shipped in releases
+  config.ini              # generated locally; preserved on upgrade
   cua/
     cua-driver.exe
     cua-driver-uia.exe
@@ -86,24 +89,27 @@ For unsigned/downloaded script errors, see [PowerShell 5.1 and execution policy]
 
 ## Preset configuration
 
-Edit the settings at the top of a **local copy**:
+Edit **config.ini**, created from `config.example.ini` on first launch, or copy
+the template yourself. No PowerShell script edits are needed. See
+[configuration and upgrades](docs/configuration.md).
 
-```powershell
-$UseScriptConfig = $true
-$BearerToken = '<32-4096 non-whitespace characters>'
-$SshHost = 'your-linux-host'
-$SshUser = 'your-user'
-$SshAuthMode = 'key' # or 'password'
-$SshPort = 22
-$LocalPort = 19222
-$RemotePort = 19222
+```ini
+[CuaLink]
+UseConfig=true
+BearerToken=<32-4096 non-whitespace characters>
+SshHost=your-linux-host
+SshUser=your-user
+SshAuthMode=key
+SshPort=22
+LocalPort=19222
+RemotePort=19222
 ```
 
 All these fields are required in preset mode. Missing fields fail instead of
 silently prompting. Passwords cannot be preset: `password` mode always prompts
 securely on each new start. `key` mode never asks for a password.
 
-With `$UseScriptConfig = $false`, the connection presets are ignored and collected
+With `UseConfig=false`, the connection presets are ignored and collected
 interactively; the token is random. To generate a fixed Bearer token in Windows PowerShell 5.1:
 
 ```powershell
