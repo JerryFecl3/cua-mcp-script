@@ -81,6 +81,17 @@ def license_allowed(expression):
     return all(x in ALLOWED or x in ('AND', 'OR') for x in parts)
 
 
+def write_bundle(bundle, output):
+    # Crates often ship epoch-dated notices. Normalize timestamps instead of
+    # propagating dates older than ZIP's 1980 minimum; sort paths for stable output.
+    with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(bundle.rglob('*')):
+            if path.is_file():
+                info = zipfile.ZipInfo(path.relative_to(bundle).as_posix(), (1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                archive.writestr(info, path.read_bytes())
+
+
 def latest_stable():
     releases = []
     for page in range(1, 11):
@@ -187,7 +198,8 @@ The pinned uniffi-bindgen-react-native dependency is available from the npm regi
     (bundle / 'version.json').write_text(json.dumps(manifest_data, indent=2)+'\n')
     dist = ROOT / 'dist'
     dist.mkdir(exist_ok=True)
-    output = Path(shutil.make_archive(str(dist / f'cua-mcp-script-{manifest_data["script_version"]}-cua-{version}-windows-x64'), 'zip', bundle))
+    output = dist / f'cua-mcp-script-{manifest_data["script_version"]}-cua-{version}-windows-x64.zip'
+    write_bundle(bundle, output)
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
     (dist / 'SHA256SUMS').write_text(f'{digest}  {output.name}\n')
     print(json.dumps(manifest_data, indent=2))

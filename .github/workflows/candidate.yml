@@ -24,6 +24,7 @@ jobs:
           python-version: '3.12'
       - shell: pwsh
         run: ./tests/Test-Script.ps1
+      - run: python -m unittest discover -s tests -p "test_*.py"
       - shell: pwsh
         run: rustup update stable --no-self-update
       - name: Verified download and license gate
