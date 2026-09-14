@@ -138,6 +138,7 @@ def build(tag):
             (bundle / 'cua' / name).write_bytes(z.read(name))
     for name in ('CuaLink.ps1', 'README.md', 'README.zh-CN.md', 'LICENSE', 'VERSION', 'SECURITY.md'):
         shutil.copy2(ROOT / name, bundle / name)
+    shutil.copytree(ROOT / 'docs', bundle / 'docs')
 
     # Exact source tag for dependency notices. tar's data filter rejects path traversal.
     source_archive = work / 'source.tar.gz'

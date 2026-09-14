@@ -136,6 +136,8 @@ This is an observed compatibility requirement, not a guarantee for future CUA re
 
 ## Tests and releases
 
+Run these developer tests from a repository checkout (not the runtime-only ZIP):
+
 ```powershell
 ./tests/Test-Script.ps1
 ./tests/Test-CuaHttp.ps1 -Driver ./cua/cua-driver.exe
