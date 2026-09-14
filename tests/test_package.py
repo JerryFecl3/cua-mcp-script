@@ -11,6 +11,17 @@ spec.loader.exec_module(package)
 
 
 class PackagingTests(unittest.TestCase):
+    def test_mismatched_windows_architecture_is_rejected(self):
+        for arch, machine in [('x64', 0x8664), ('arm64', 0xAA64)]:
+            data = bytearray(128)
+            data[:2] = b'MZ'
+            data[60:64] = (64).to_bytes(4, 'little')
+            data[64:68] = b'PE\0\0'
+            data[68:70] = machine.to_bytes(2, 'little')
+            package.verify_pe_architecture(data, arch)
+            with self.assertRaises(RuntimeError):
+                package.verify_pe_architecture(data, 'arm64' if arch == 'x64' else 'x64')
+
     def test_epoch_notice_is_preserved_with_zip_safe_timestamp(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

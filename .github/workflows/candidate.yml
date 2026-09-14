@@ -14,7 +14,33 @@ concurrency:
   group: cua-candidate
   cancel-in-progress: false
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin one upstream version for both architectures
+        id: version
+        env:
+          CUA_TAG: ${{ inputs.cua_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os, re, sys
+          sys.path.insert(0, 'scripts')
+          from package import latest_stable
+          tag = os.environ.get('CUA_TAG') or latest_stable()['tag_name']
+          assert re.fullmatch(r'cua-driver-rs-v\d+\.\d+\.\d+', tag), 'Invalid stable tag'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write('tag=' + tag + '\n')
+          PY
   package:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -22,7 +48,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - shell: pwsh
+      - shell: powershell
         run: ./tests/Test-Script.ps1
       - run: python -m unittest discover -s tests -p "test_*.py"
       - shell: pwsh
@@ -30,22 +56,41 @@ jobs:
       - name: Verified download and license gate
         shell: pwsh
         env:
-          CUA_TAG: ${{ inputs.cua_tag }}
+          CUA_TAG: ${{ needs.resolve.outputs.tag }}
+          CUA_ARCH: ${{ matrix.arch }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          $args = @()
-          if ($env:CUA_TAG) { $args = @('--tag', $env:CUA_TAG) }
-          python scripts/package.py @args
+          python scripts/package.py --tag $env:CUA_TAG --arch $env:CUA_ARCH
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: HTTP compatibility smoke test
-        shell: pwsh
+        if: matrix.arch == 'x64'
+        shell: powershell
         run: |
           $driver = Get-ChildItem build -Filter cua-driver.exe -Recurse | Where-Object FullName -Match 'cua-mcp-script[\\/]cua[\\/]'
           if (@($driver).Count -ne 1) { throw 'Expected one packaged driver' }
           ./tests/Test-CuaHttp.ps1 -Driver $driver.FullName
       - uses: actions/upload-artifact@v4
         with:
-          name: cua-windows-candidate
+          name: cua-windows-candidate-${{ matrix.arch }}
           path: dist/*
           if-no-files-found: error
           retention-days: 30
+  arm64-smoke:
+    needs: package
+    runs-on: windows-11-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: cua-windows-candidate-arm64
+          path: artifact
+      - name: Native ARM64 Windows PowerShell 5.1 tests
+        shell: powershell
+        run: |
+          ./tests/Test-Script.ps1
+          $zip = Get-ChildItem artifact -Filter *.zip | Select-Object -First 1
+          $expected = ((Get-Content artifact/SHA256SUMS-arm64 -Raw) -split '\s+')[0]
+          if ((Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Checksum mismatch' }
+          Expand-Archive $zip.FullName unpacked
+          ./tests/Test-CuaHttp.ps1 -Driver ./unpacked/cua/cua-driver.exe

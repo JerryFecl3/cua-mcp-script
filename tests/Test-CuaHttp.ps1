@@ -7,7 +7,10 @@ $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
 $listener.Start(); $port=$listener.LocalEndpoint.Port; $listener.Stop()
 $priorPort=$env:CUA_DRIVER_RS_MCP_HTTP_PORT; $priorToken=$env:CUA_DRIVER_RS_MCP_HTTP_TOKEN
 $env:CUA_DRIVER_RS_MCP_HTTP_PORT="$port"
-$env:CUA_DRIVER_RS_MCP_HTTP_TOKEN=[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$bytes=New-Object byte[] 32
+$rng=[Security.Cryptography.RandomNumberGenerator]::Create()
+try {$rng.GetBytes($bytes)} finally {$rng.Dispose()}
+$env:CUA_DRIVER_RS_MCP_HTTP_TOKEN=[BitConverter]::ToString($bytes).Replace('-','')
 $headers=@{Authorization="Bearer $env:CUA_DRIVER_RS_MCP_HTTP_TOKEN";Accept='application/json, text/event-stream';'MCP-Protocol-Version'='2025-06-18'}
 $url="http://127.0.0.1:$port/mcp"
 function Rpc($method,$params) {
@@ -25,8 +28,10 @@ try {
         try { $init=Rpc initialize @{protocolVersion='2025-06-18';capabilities=@{};clientInfo=@{name='cua-mcp-script-test';version='1'}}; break } catch { Start-Sleep -Milliseconds 200 }
     }
     if (-not $init -or $init.serverInfo.name -ne 'cua-driver') { throw 'HTTP initialization failed' }
-    $unauthorized=Invoke-WebRequest $url -Method Post -ContentType 'application/json' -Body '{}' -SkipHttpErrorCheck
-    if ([int]$unauthorized.StatusCode -ne 401) { throw 'Unauthenticated request was not rejected with 401' }
+    $status=0
+    try { $unauthorized=Invoke-WebRequest $url -Method Post -ContentType 'application/json' -Body '{}' -UseBasicParsing; $status=[int]$unauthorized.StatusCode }
+    catch { if ($_.Exception.Response) { $status=[int]$_.Exception.Response.StatusCode } else { throw } }
+    if ($status -ne 401) { throw 'Unauthenticated request was not rejected with 401' }
     $tools=Rpc 'tools/list' @{}
     foreach($name in 'list_windows','get_window_state','launch_app','type_text') {
         if($name -notin $tools.tools.name) { throw "Required tool missing: $name" }

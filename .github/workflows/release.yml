@@ -43,8 +43,13 @@ jobs:
           [[ "$REPORT" =~ ^https:// ]]
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN" > run.json
           jq -e '.conclusion == "success" and .head_branch == "main" and .path == ".github/workflows/candidate.yml" and (.event == "schedule" or .event == "workflow_dispatch")' run.json
-          gh run download "$RUN" -n cua-windows-candidate -D dist
-          cd dist && sha256sum -c SHA256SUMS
+          mkdir -p dist
+          for arch in x64 arm64; do
+            gh run download "$RUN" -n "cua-windows-candidate-$arch" -D "incoming/$arch"
+            (cd "incoming/$arch" && sha256sum -c "SHA256SUMS-$arch")
+            cp "incoming/$arch/"*.zip dist/
+            cat "incoming/$arch/SHA256SUMS-$arch" >> dist/SHA256SUMS
+          done
       - name: Publish exact tested archive
         env:
           GH_TOKEN: ${{ github.token }}

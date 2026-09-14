@@ -1,4 +1,4 @@
-#requires -Version 7.0
+#requires -Version 5.1
 param(
     [ValidateSet('menu','start','stop','status','worker')][string]$Action = 'menu',
     [switch]$NoPause
@@ -6,8 +6,9 @@ param(
 
 # ================= USER SETTINGS =================
 $UseScriptConfig = $false # True: complete preset configuration; false: interactive.
-# Generate a Bearer Token in PowerShell 7, then paste the output below:
-# [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+# Generate a Bearer Token in Windows PowerShell 5.1, then paste the output below:
+# $b = New-Object byte[] 32; $r = [Security.Cryptography.RandomNumberGenerator]::Create()
+# $r.GetBytes($b); $r.Dispose(); [BitConverter]::ToString($b).Replace('-', '')
 # This generates 64 hex characters (256 random bits); it is NOT an SSH login key.
 # To create an SSH login key instead: ssh-keygen -t ed25519
 # Install its .pub public key in Debian ~/.ssh/authorized_keys; keep the private key on Windows.
@@ -24,8 +25,16 @@ $RemotePort = 19222         # Required in script mode: Debian mapped port.
 # =================================================
 
 $ErrorActionPreference = 'Stop'
-if (-not $IsWindows) { throw 'cua-mcp-script requires Windows and PowerShell 7.' }
-$instanceId = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($PSScriptRoot.ToLowerInvariant()))).Substring(0,16)
+if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'cua-mcp-script requires Windows PowerShell 5.1 or later on Windows.' }
+function New-BearerToken {
+    $bytes = New-Object byte[] 32
+    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    return [BitConverter]::ToString($bytes).Replace('-', '')
+}
+$sha = [Security.Cryptography.SHA256]::Create()
+try { $instanceId = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($PSScriptRoot.ToLowerInvariant()))).Replace('-', '').Substring(0,16) }
+finally { $sha.Dispose() }
 $pipe = '\\.\pipe\cua-mcp-script-' + $instanceId
 $runtime = Join-Path $PSScriptRoot '.runtime'
 New-Item -ItemType Directory -Force $runtime | Out-Null
@@ -109,6 +118,7 @@ class CuaAskpass {
 "@
     $source | Set-Content "$runtime/askpass.cs"
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+    if (-not (Test-Path $compiler)) { $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe' }
     if (-not (Test-Path $compiler)) { throw 'Windows .NET Framework C# compiler is required for SSH password mode.' }
     & $compiler /nologo /target:exe "/out:$runtime\askpass.exe" /reference:System.Security.dll "$runtime\askpass.cs" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not compile SSH password adapter.' }
@@ -240,11 +250,15 @@ try {
                     [Convert]::ToBase64String($encrypted) | Set-Content "$runtime/password.dpapi"
                     [Array]::Clear($bytes,0,$bytes.Length); $plain=$null
                 }
-                if (-not $BearerToken) { $BearerToken=[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) }
+                if (-not $BearerToken) { $BearerToken=New-BearerToken }
                 if ($BearerToken.Length -lt 32 -or $BearerToken.Length -gt 4096 -or $BearerToken -match '\s') { throw 'Bearer token must contain 32-4096 non-whitespace characters.' }
                 $config=@{sshHost=$SshHost;sshUser=$SshUser;sshPort=$SshPort;localPort=$LocalPort;remotePort=$RemotePort;passwordMode=$passwordMode;token=(ConvertTo-SecureString $BearerToken -AsPlainText -Force | ConvertFrom-SecureString)}
                 $config | ConvertTo-Json | Set-Content $configFile
-                $engine=Join-Path $PSHOME 'pwsh.exe'
+                # Always use the in-box 5.1 host, even if launched from PowerShell 7.
+                $engine=Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe'
+                if (-not [Environment]::Is64BitProcess -and [Environment]::Is64BitOperatingSystem) {
+                    $engine=Join-Path $env:WINDIR 'Sysnative/WindowsPowerShell/v1.0/powershell.exe'
+                }
                 $worker=Start-Process $engine -ArgumentList '-NoProfile','-File',('"'+$PSCommandPath+'"'),'worker' -WindowStyle Hidden -RedirectStandardInput $inputFile -PassThru -RedirectStandardOutput "$runtime/supervisor.stdout.log" -RedirectStandardError "$runtime/supervisor.stderr.log"
                 $deadline=(Get-Date).AddSeconds(120)
                 do {

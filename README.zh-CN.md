@@ -5,14 +5,18 @@
 
 ## 使用
 
-需要 Windows 交互式桌面、PowerShell 7、Windows OpenSSH，以及官方 Cua Driver。
+运行基准是 Windows 10/11 自带的 **Windows PowerShell 5.1**，无需安装 PowerShell 7。
+整合包区分 x64（Intel/AMD）与 ARM64，内含相同版本的对应架构 CUA。
+如果下载脚本受到执行策略限制，参见 [5.1 使用说明](docs/powershell-5.1.md)。
+
+需要 Windows 交互式桌面、Windows PowerShell 5.1、Windows OpenSSH，以及官方 Cua Driver。
 Linux 端需要 SSH 转发权限和 `ss`、`grep`、`curl`。
 
-将官方 Windows x64 binary ZIP 完整解压到脚本旁的 `cua/`，或者使用 PATH
+将对应架构的官方 Windows x64 / ARM64 binary ZIP 完整解压到脚本旁的 `cua/`，或者使用 PATH
 中已安装的 cua-driver。脚本优先选择 `cua/cua-driver.exe`。
 
 ```powershell
-pwsh -File ./CuaLink.ps1
+powershell.exe -NoProfile -File ./CuaLink.ps1
 ```
 
 选择 Start / Stop / Status；也可以直接运行 `./CuaLink.ps1 start`。
@@ -28,7 +32,8 @@ pwsh -File ./CuaLink.ps1
 生成固定 Bearer token（不是 SSH 登录密钥）：
 
 ```powershell
-[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$b = New-Object byte[] 32; $r = [Security.Cryptography.RandomNumberGenerator]::Create()
+$r.GetBytes($b); $r.Dispose(); [BitConverter]::ToString($b).Replace('-', '')
 ```
 
 启动和运行中的 Status 都显示：
@@ -74,3 +79,4 @@ Codex/Hermes 控制效果。SSH 密码实机登录仍需补测。详见
 
 脚本 MIT；CUA 及其依赖遵守各自许可证，Node runtime 为 MPL-2.0。
 运行时生成的辅助程序和加密配置均在 `.runtime/`，用户只需维护一个入口脚本。
+

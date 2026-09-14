@@ -17,8 +17,8 @@ either CUA or SSH exits, it stops the other child. Automatic reconnection is not
 
 ## Requirements
 
-- Windows interactive desktop, PowerShell **7**, Windows OpenSSH client.
-- Official Cua Driver on PATH, or a matching Windows x64 bundle under `cua/`.
+- Windows interactive desktop, Windows PowerShell **5.1** (included with Windows 10/11), Windows OpenSSH client.
+- Official Cua Driver on PATH, or a matching Windows x64 or ARM64 bundle under `cua/`.
 - An SSH-accessible Linux machine with remote TCP forwarding enabled, `ss`, `grep`, `curl`.
 - Existing SSH host trust. First run `ssh user@host -p 22` and verify the host fingerprint.
 - Key authentication uses OpenSSH's existing identities/config/agent. Unlock encrypted
@@ -30,9 +30,12 @@ an agent sandbox: those may see an isolated desktop.
 
 ## Quick start
 
+The baseline is **Windows PowerShell 5.1**. PowerShell 7 is not required. Integrated
+Windows ZIPs include CUA: choose x64 for Intel/AMD PCs or ARM64 for ARM PCs.
+
 Download the repository or a release. Source-only releases do **not** include CUA.
 Obtain CUA from [official releases](https://github.com/trycua/cua/releases) and use
-the matching `windows-x86_64-binary.zip`. Preserve all files together:
+`windows-x86_64-binary.zip` for x64 or `windows-arm64-binary.zip` for ARM64. Preserve all files together:
 
 ```text
 cua-mcp-script/
@@ -50,7 +53,7 @@ cua-mcp-script/
 The script prefers `cua/cua-driver.exe` and otherwise resolves `cua-driver` on PATH.
 
 ```powershell
-pwsh -File ./CuaLink.ps1
+powershell.exe -NoProfile -File ./CuaLink.ps1
 # Or:
 ./CuaLink.ps1 start
 ./CuaLink.ps1 status
@@ -72,6 +75,7 @@ Authorization: Bearer ...
 Start and Status display the same connection block. The MCP address is on the
 **Linux SSH destination**, not a public URL. Press Enter to leave the script;
 an existing PowerShell terminal returns to its prompt. Run Stop to close the link.
+For unsigned/downloaded script errors, see [PowerShell 5.1 and execution policy](docs/powershell-5.1.md).
 `-NoPause` skips the final Enter prompt only, not required configuration/password prompts.
 
 ## Preset configuration
@@ -94,10 +98,11 @@ silently prompting. Passwords cannot be preset: `password` mode always prompts
 securely on each new start. `key` mode never asks for a password.
 
 With `$UseScriptConfig = $false`, the connection presets are ignored and collected
-interactively; the token is random. To generate a fixed Bearer token in PowerShell 7:
+interactively; the token is random. To generate a fixed Bearer token in Windows PowerShell 5.1:
 
 ```powershell
-[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$b = New-Object byte[] 32; $r = [Security.Cryptography.RandomNumberGenerator]::Create()
+$r.GetBytes($b); $r.Dispose(); [BitConverter]::ToString($b).Replace('-', '')
 ```
 
 This token is separate from an SSH key. Create an SSH key with `ssh-keygen -t ed25519`
@@ -178,3 +183,4 @@ Official references: [CUA license](https://github.com/trycua/cua/blob/cua-driver
 [Node runtime notice](https://github.com/trycua/cua/blob/cua-driver-rs-v0.28.1/libs/cua-driver/scripts/node-runtime-NOTICE.md).
 
 This independent project is not affiliated with or endorsed by Cua, OpenAI or Hermes.
+

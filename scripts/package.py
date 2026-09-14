@@ -21,6 +21,10 @@ ALLOWED = {'MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'Zlib',
            'Unicode-3.0', 'Unicode-DFS-2016', 'CC0-1.0', 'Unlicense', 'MPL-2.0',
            'BSL-1.0', '0BSD', 'MIT-0', 'CDLA-Permissive-2.0'}
 TREE_CACHE = {}
+ARCHITECTURES = {
+    'x64': ('x86_64', 'x86_64-pc-windows-msvc'),
+    'arm64': ('arm64', 'aarch64-pc-windows-msvc'),
+}
 
 
 class NoCrossHostCredentials(urllib.request.HTTPRedirectHandler):
@@ -92,6 +96,17 @@ def write_bundle(bundle, output):
                 archive.writestr(info, path.read_bytes())
 
 
+def verify_pe_architecture(data, arch):
+    if len(data) < 64 or data[:2] != b'MZ':
+        raise RuntimeError('Expected a Windows PE binary')
+    offset = int.from_bytes(data[60:64], 'little')
+    if data[offset:offset+4] != b'PE\0\0':
+        raise RuntimeError('Invalid Windows PE signature')
+    machine = int.from_bytes(data[offset+4:offset+6], 'little')
+    if machine != {'x64': 0x8664, 'arm64': 0xAA64}[arch]:
+        raise RuntimeError(f'Wrong binary architecture: expected {arch}, got {machine:#x}')
+
+
 def latest_stable():
     releases = []
     for page in range(1, 11):
@@ -106,21 +121,22 @@ def latest_stable():
     raise RuntimeError('No stable CUA Driver release found')
 
 
-def build(tag):
+def build(tag, arch='x64'):
+    asset_arch, rust_target = ARCHITECTURES[arch]
     release = (json.loads(fetch(f'https://api.github.com/repos/trycua/cua/releases/tags/{tag}'))
                if tag else latest_stable())
     tag = release['tag_name']
     if not re.fullmatch(r'cua-driver-rs-v\d+\.\d+\.\d+', tag):
         raise RuntimeError('Only stable, exact CUA Driver tags are accepted')
     version = tag.removeprefix('cua-driver-rs-v')
-    asset_name = f'cua-driver-rs-{version}-windows-x86_64-binary.zip'
+    asset_name = f'cua-driver-rs-{version}-windows-{asset_arch}-binary.zip'
     assets = {a['name']: a for a in release['assets']}
     archive = fetch(assets[asset_name]['browser_download_url'])
     checksums = fetch(assets['checksums.txt']['browser_download_url']).decode()
     actual = hashlib.sha256(archive).hexdigest()
     if not re.search(rf'(?mi)^{actual}\s+\*?{re.escape(asset_name)}\s*$', checksums):
         raise RuntimeError('Upstream archive checksum mismatch')
-    work = ROOT / 'build' / tag
+    work = ROOT / 'build' / tag / arch
     if work.exists():
         raise RuntimeError(f'Build directory already exists: {work}; use a clean checkout')
     work.mkdir(parents=True)
@@ -135,7 +151,10 @@ def build(tag):
         if set(z.namelist()) != expected or len(z.namelist()) != len(expected):
             raise RuntimeError('Upstream package layout changed: review required')
         for name in expected:
-            (bundle / 'cua' / name).write_bytes(z.read(name))
+            data = z.read(name)
+            if name.endswith(('.exe', '.dll', '.node')):
+                verify_pe_architecture(data, arch)
+            (bundle / 'cua' / name).write_bytes(data)
     for name in ('CuaLink.ps1', 'README.md', 'README.zh-CN.md', 'LICENSE', 'VERSION', 'SECURITY.md'):
         shutil.copy2(ROOT / name, bundle / name)
     shutil.copytree(ROOT / 'docs', bundle / 'docs')
@@ -158,7 +177,7 @@ def build(tag):
     manifest = driver / 'rust/Cargo.toml'
     metadata = json.loads(subprocess.check_output([
         'cargo', 'metadata', '--locked', '--format-version', '1',
-        '--filter-platform', 'x86_64-pc-windows-msvc', '--manifest-path', str(manifest)
+        '--filter-platform', rust_target, '--manifest-path', str(manifest)
     ], text=True, encoding='utf-8'))
     notices = [f'# Third-party notices\n\nCUA {version}: https://github.com/trycua/cua/tree/{tag}\n',
                'CUA is independently licensed; the wrapper LICENSE does not replace component licenses.\n']
@@ -193,16 +212,17 @@ The pinned uniffi-bindgen-react-native dependency is available from the npm regi
         (work / 'license-review-required.txt').write_text('\n'.join(problems))
         raise RuntimeError('License gate failed:\n' + '\n'.join(problems))
     manifest_data = dict(script_version=(ROOT / 'VERSION').read_text().strip(), cua_version=version,
-                         cua_tag=tag, upstream_url=assets[asset_name]['browser_download_url'],
+                         cua_tag=tag, architecture=arch, platform='windows', powershell_minimum='5.1',
+                         upstream_url=assets[asset_name]['browser_download_url'],
                          upstream_sha256=actual, status='candidate-not-desktop-certified',
                          source_commit=os.getenv('GITHUB_SHA', 'local'))
     (bundle / 'version.json').write_text(json.dumps(manifest_data, indent=2)+'\n')
     dist = ROOT / 'dist'
     dist.mkdir(exist_ok=True)
-    output = dist / f'cua-mcp-script-{manifest_data["script_version"]}-cua-{version}-windows-x64.zip'
+    output = dist / f'cua-mcp-script-{manifest_data["script_version"]}-cua-{version}-windows-{arch}.zip'
     write_bundle(bundle, output)
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
-    (dist / 'SHA256SUMS').write_text(f'{digest}  {output.name}\n')
+    (dist / f'SHA256SUMS-{arch}').write_text(f'{digest}  {output.name}\n')
     print(json.dumps(manifest_data, indent=2))
     print(output)
 
@@ -210,5 +230,7 @@ The pinned uniffi-bindgen-react-native dependency is available from the npm regi
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--tag', help='Exact stable upstream tag; default: discover newest stable driver')
-    build(parser.parse_args().tag)
+    parser.add_argument('--arch', choices=ARCHITECTURES, default='x64')
+    args = parser.parse_args()
+    build(args.tag, args.arch)
 

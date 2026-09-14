@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- Windows PowerShell 5.1 is the baseline; PowerShell 7 is no longer required.
+- Replace modern .NET-only hashing/RNG APIs and launch the in-box worker host.
+- Build Windows x64 and ARM64 bundles using one pinned latest stable CUA tag.
+- Run native Windows PowerShell 5.1 HTTP smoke tests for both architectures.
+- Document execution policies without automatically changing system settings.
+
 ## 0.1.1
 
 - Fix Windows UTF-8 decoding and ZIP timestamps in candidate builds.
