@@ -155,7 +155,7 @@ def build(tag, arch='x64'):
             if name.endswith(('.exe', '.dll', '.node')):
                 verify_pe_architecture(data, arch)
             (bundle / 'cua' / name).write_bytes(data)
-    for name in ('CuaLink.ps1', 'README.md', 'README.zh-CN.md', 'LICENSE', 'VERSION', 'SECURITY.md'):
+    for name in ('CuaLink.ps1', 'run.cmd', 'README.md', 'README.zh-CN.md', 'LICENSE', 'VERSION', 'SECURITY.md'):
         shutil.copy2(ROOT / name, bundle / name)
     shutil.copytree(ROOT / 'docs', bundle / 'docs')
 

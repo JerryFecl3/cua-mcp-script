@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Include run.cmd in Windows bundles for double-click startup with Windows PowerShell 5.1.
+- Unblock only the adjacent entry script and use process-only RemoteSigned; leave persistent policies unchanged.
+
 ## 0.2.0
 
 - Windows PowerShell 5.1 is the baseline; PowerShell 7 is no longer required.

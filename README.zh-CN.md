@@ -5,6 +5,11 @@
 
 ## 使用
 
+解压整合包后，双击 **run.cmd** 即可打开 Start / Stop / Status 菜单。
+启动器仅解除旁边 `CuaLink.ps1` 的下载文件标记，并以本次进程有效的
+`RemoteSigned` 策略启动 Windows PowerShell 5.1，不修改用户或系统的永久执行策略。
+组织组策略仍然有效。也支持命令行参数：`run.cmd status -NoPause`。
+
 运行基准是 Windows 10/11 自带的 **Windows PowerShell 5.1**，无需安装 PowerShell 7。
 整合包区分 x64（Intel/AMD）与 ARM64，内含相同版本的对应架构 CUA。
 如果下载脚本受到执行策略限制，参见 [5.1 使用说明](docs/powershell-5.1.md)。

@@ -14,6 +14,10 @@ architecture receives a Windows PowerShell 5.1 native HTTP smoke test.
 This script is unsigned. Windows can mark downloaded ZIP contents as originating
 from the internet. After verifying the download, unblock just the entry script:
 
+For double-click startup, use `run.cmd`. It automatically unblocks only the
+adjacent entry script and uses process-only RemoteSigned. The commands below
+are the manual alternative.
+
 ```powershell
 Unblock-File -LiteralPath .\CuaLink.ps1
 .\CuaLink.ps1
@@ -27,8 +31,8 @@ powershell.exe -NoProfile -ExecutionPolicy RemoteSigned -File .\CuaLink.ps1
 ```
 
 Organizational policies may still require signing. Inspect
-`Get-ExecutionPolicy -List` and follow your organization's policy. No automatic
-policy changes, unblocking, or security prompt bypasses are performed by this tool.
+`Get-ExecutionPolicy -List` and follow your organization's policy. The launcher
+does not change persistent policies or override organization-enforced policies.
 
 Windows OpenSSH Client must be installed/enabled. CUA is bundled in integrated
 Windows ZIPs, so a separate CUA installation or PATH change is not required.

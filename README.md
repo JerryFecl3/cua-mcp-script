@@ -30,6 +30,12 @@ an agent sandbox: those may see an isolated desktop.
 
 ## Quick start
 
+Extract the integrated ZIP and double-click **run.cmd**. It unblocks only the
+adjacent CuaLink.ps1 and starts Windows PowerShell 5.1 with process-only
+RemoteSigned, without changing your user or machine execution policy.
+Organization-enforced policies still apply. Command-line arguments also work:
+`run.cmd status -NoPause`.
+
 The baseline is **Windows PowerShell 5.1**. PowerShell 7 is not required. Integrated
 Windows ZIPs include CUA: choose x64 for Intel/AMD PCs or ARM64 for ARM PCs.
 
