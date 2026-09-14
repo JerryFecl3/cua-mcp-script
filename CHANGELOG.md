@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1
+
+- Fix Windows UTF-8 decoding and ZIP timestamps in candidate builds.
+- Recover omitted third-party notices from exact dependency source commits.
+- Preserve bundle documentation and add packaging regression tests.
+- Full CUA 0.28.1 candidate build passed on GitHub Actions; artifact SHA256,
+  clean defaults and 645 license/notice files were verified after download.
+- Binary publication still requires the dedicated compatibility checklist.
+
 ## 0.1.0
 
 - Single Windows PowerShell entry point for start, stop and status.
