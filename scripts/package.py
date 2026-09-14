@@ -104,7 +104,7 @@ def build(tag):
     metadata = json.loads(subprocess.check_output([
         'cargo', 'metadata', '--locked', '--format-version', '1',
         '--filter-platform', 'x86_64-pc-windows-msvc', '--manifest-path', str(manifest)
-    ], text=True))
+    ], text=True, encoding='utf-8'))
     notices = [f'# Third-party notices\n\nCUA {version}: https://github.com/trycua/cua/tree/{tag}\n',
                'CUA is independently licensed; the wrapper LICENSE does not replace component licenses.\n']
     problems = []
