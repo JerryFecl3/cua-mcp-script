@@ -30,12 +30,13 @@ powershell.exe -NoProfile -File ./CuaLink.ps1
 配置保存在 **config.ini**，首次打开菜单时从 `config.example.ini` 自动生成，
 已有配置不会覆盖。以后只需编辑配置文件，无需修改 PS1。详见[配置和升级说明](docs/configuration.md)。
 
-默认 `UseConfig=false`，全部交互输入，Bearer token 自动随机生成。
+默认所有配置值留空，全部交互输入，Bearer token 自动随机生成。
 密码输入时直接回车使用 SSH key。端口默认 SSH 22、Windows 19222、Linux 映射 19222。
 
-使用固定配置时，在 `config.ini` 中设 `UseConfig=true`，完整填写 token、地址、
+使用固定配置时，在 `config.ini` 中完整填写 token、地址、
 用户名、认证模式和三个端口。`SshAuthMode=key` 不询问密码；`password`
 每次新启动都要求隐藏输入密码，不能预置密码。个人 `config.ini` 不进入 Git 或发布包。
+无需总开关；只要填入任意一项，就必须填全。配置文件不含注释，说明统一放在文档中。
 
 生成固定 Bearer token（不是 SSH 登录密钥）：
 

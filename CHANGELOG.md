@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Remove the configuration switch and template comments; move explanations to documentation.
+- Empty values select interactive input; any filled value requires a complete preset.
+
 ## 0.3.0
 
 - Move connection settings to config.ini with a UseConfig switch and strict validation.

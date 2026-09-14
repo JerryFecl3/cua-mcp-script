@@ -95,7 +95,6 @@ the template yourself. No PowerShell script edits are needed. See
 
 ```ini
 [CuaLink]
-UseConfig=true
 BearerToken=<32-4096 non-whitespace characters>
 SshHost=your-linux-host
 SshUser=your-user
@@ -109,8 +108,10 @@ All these fields are required in preset mode. Missing fields fail instead of
 silently prompting. Passwords cannot be preset: `password` mode always prompts
 securely on each new start. `key` mode never asks for a password.
 
-With `UseConfig=false`, the connection presets are ignored and collected
-interactively; the token is random. To generate a fixed Bearer token in Windows PowerShell 5.1:
+Leave all values empty for interactive input and a random token. Once any value
+is filled, all settings are required. There is no mode switch. Explanations and
+generation commands belong in the documentation, keeping the INI template clean.
+To generate a fixed Bearer token in Windows PowerShell 5.1:
 
 ```powershell
 $b = New-Object byte[] 32; $r = [Security.Cryptography.RandomNumberGenerator]::Create()

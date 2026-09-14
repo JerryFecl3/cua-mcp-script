@@ -45,7 +45,7 @@ function Read-LinkConfig([string]$Path) {
     catch { throw 'Cannot read config.ini. Copy config.example.ini and edit your settings.' }
     $values = @{}
     $section = $false
-    $allowed = @('UseConfig','BearerToken','SshHost','SshUser','SshAuthMode','SshPort','LocalPort','RemotePort')
+    $allowed = @('BearerToken','SshHost','SshUser','SshAuthMode','SshPort','LocalPort','RemotePort')
     foreach ($line in $lines) {
         $text = $line.Trim()
         if (-not $text -or $text.StartsWith(';') -or $text.StartsWith('#')) { continue }
@@ -62,13 +62,13 @@ function Read-LinkConfig([string]$Path) {
         }
         $values[$name] = $text.Substring($separator+1).Trim()
     }
-    if ($values.UseConfig -notin 'true','false') { throw 'config.ini: UseConfig must be true or false (without quotes).' }
-    $values.UseConfig = $values.UseConfig -eq 'true'
+    if (-not $section) { throw 'config.ini must have a [CuaLink] section.' }
+    $values.IsPreset = @($values.Values | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -gt 0
     $settings = [pscustomobject]$values
-    if (-not $settings.UseConfig) { return $settings }
+    if (-not $settings.IsPreset) { return $settings }
     foreach ($name in 'BearerToken','SshHost','SshUser','SshAuthMode') {
         if ($settings.$name -isnot [string] -or [string]::IsNullOrWhiteSpace($settings.$name)) {
-            throw "config.ini: $name is required when UseConfig is true. Fill every setting or set UseConfig to false."
+            throw "config.ini: $name is required. Fill every setting, or leave all values empty for interactive input."
         }
     }
     if ($settings.SshAuthMode -notin 'key','password') { throw 'config.ini: SshAuthMode must be key or password.' }
@@ -242,7 +242,7 @@ try {
         'start' {
             if (-not $supervisor) {
                 $settings = Read-LinkConfig $userConfigFile
-                if ($settings.UseConfig) {
+                if ($settings.IsPreset) {
                     $BearerToken=$settings.BearerToken; $SshHost=$settings.SshHost; $SshUser=$settings.SshUser
                     $SshAuthMode=$settings.SshAuthMode; $SshPort=$settings.SshPort
                     $LocalPort=$settings.LocalPort; $RemotePort=$settings.RemotePort

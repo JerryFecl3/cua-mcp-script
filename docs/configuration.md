@@ -14,7 +14,6 @@ the value, preserving tokens containing =, ; or #. Duplicate keys are rejected.
 
 | Setting | Meaning / 含义 |
 | --- | --- |
-| UseConfig | `false`: interactive / 全部交互输入；`true`: all presets required / 必须完整填写预置配置 |
 | BearerToken | Preset: 32–4096 non-whitespace characters / 预置模式必填，无空白字符 |
 | SshHost | Linux SSH hostname or IP / SSH 目标主机 |
 | SshUser | SSH username / SSH 用户名 |
@@ -23,14 +22,14 @@ the value, preserving tokens containing =, ; or #. Duplicate keys are rejected.
 | LocalPort | Windows CUA port, 1–65535 / 默认 19222 |
 | RemotePort | Linux mapped port, 1–65535 / 默认 19222 |
 
-`UseConfig` must be true or false, and ports must be integers, without
-quotes. In interactive mode the connection presets are ignored and a fresh
-Bearer token is generated. Password fields are not supported in the config.
+Leave every value empty for interactive input with a fresh random Bearer token.
+Once any value is filled, all seven settings are required. Ports must be integers
+without quotes. There is no configuration switch. Passwords cannot be stored.
 
-`UseConfig` 的 true / false 和端口数字不能加引号。交互模式忽略其他连接预设，
-token 自动随机生成。配置文件不支持保存 SSH 密码。
+所有值留空时使用交互输入，token 自动随机生成；填入任意值时，七个配置项必须填全。
+不再设置总开关，配置文件不支持保存 SSH 密码。
 所有值均不加引号，注释单独一行以 `;` 或 `#` 开头，不要把注释放在值的后面。
-模板已包含各项说明，以及 token 和 SSH key 生成命令。
+模板不含注释；各项说明、默认端口及 token / SSH key 生成命令均在本文中。
 
 ## Generate a Bearer token / 生成 token
 
@@ -61,13 +60,20 @@ and the packager never includes it.
 升级前先 Stop。新版 ZIP 仅包含模板，不含个人 `config.ini`，覆盖解压到原目录
 即可保留配置；换目录时复制 `config.ini`。固定 token 在配置中以明文保存，请勿分享。
 
-From 0.2.x: transfer your old script settings manually into config.ini, changing
-`UseScriptConfig` to `UseConfig`. Do not copy the old customized PS1 over the new
+From 0.2.x: transfer your old connection settings manually into config.ini, omitting
+the old switch. Do not copy the old customized PS1 over the new
 one. Passwords remain interactive. Stop and Status use saved runtime state and
 continue working even if config.ini is invalid.
 
-从 0.2.x 升级：将旧脚本里的连接参数手动填入 `config.ini`，总开关改名为
-`UseConfig`；不要用旧 PS1 覆盖新版。配置损坏不会影响 Stop / Status。
+从 0.2.x 升级：将旧脚本里的连接参数手动填入 `config.ini`，不再复制总开关；
+不要用旧 PS1 覆盖新版。配置损坏不会影响 Stop / Status。
+
+From 0.3.0: remove the UseConfig line and comments. For fixed settings, keep all
+seven values filled. For interactive input, clear all seven values, including
+ports and authentication mode. Existing personal config files are never rewritten.
+
+从 0.3.0 升级：删除 UseConfig 行和注释。固定配置保留七项完整值；交互输入则将
+七项值全部清空，包括端口和认证模式。程序不会自动重写个人配置文件。
 
 ## Validation
 

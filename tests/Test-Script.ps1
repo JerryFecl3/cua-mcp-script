@@ -13,7 +13,7 @@ $tokens=@(1..10 | ForEach-Object { New-BearerToken })
 if (@($tokens | Select-Object -Unique).Count -ne 10 -or @($tokens | Where-Object {$_ -notmatch '^[A-F0-9]{64}$'}).Count) { throw 'Token generator failed' }
 $temp=[IO.Path]::GetTempFileName()
 try {
-    $valid=@{UseConfig=$true;BearerToken=('a'*64);SshHost='example.test';SshUser='test';SshAuthMode='key';SshPort=22;LocalPort=19222;RemotePort=19222}
+    $valid=@{BearerToken=('a'*64);SshHost='example.test';SshUser='test';SshAuthMode='key';SshPort=22;LocalPort=19222;RemotePort=19222}
     function Check-Config($value, [bool]$accepted) {
         $lines=@('[CuaLink]')
         foreach ($key in $value.Keys) { $lines += "$key=$($value[$key])" }
@@ -35,22 +35,23 @@ try {
     foreach ($value in '',('a'*31),('a'*4097),('a'*32+' b')) {
         $copy=$valid.Clone(); $copy.BearerToken=$value; Check-Config $copy $false
     }
-    $copy=$valid.Clone(); $copy.UseConfig='"false"'; Check-Config $copy $false
+    $copy=$valid.Clone(); $copy.UseConfig='true'; Check-Config $copy $false
     $copy=$valid.Clone(); $copy.SshPassword='not-allowed'; Check-Config $copy $false
-    Check-Config @{UseConfig=$false} $true # Interactive mode ignores presets.
-    Check-Config @{UseConfig=$false;SshPort='ignored'} $true
-    foreach ($invalid in '[Other]', 'UseConfig=false', "[CuaLink]`nUseConfig=false`nuseconfig=true", "[CuaLink]`nUseConfig=false`n[CuaLink]", "[CuaLink]`nUseConfig=false ; comment") {
+    Check-Config @{} $true
+    Check-Config @{SshPort='22'} $false # A partial configuration must not silently prompt.
+    foreach ($invalid in '', '[Other]', 'SshHost=example.test', "[CuaLink]`nSshHost=`nsshhost=", "[CuaLink]`n[CuaLink]") {
         Set-Content -LiteralPath $temp -Value $invalid -Encoding UTF8
         $rejected=$false
         try { $null=Read-LinkConfig $temp } catch { $rejected=$true }
         if (-not $rejected) { throw 'Invalid INI accepted' }
     }
-    Set-Content -LiteralPath $temp -Encoding UTF8 -Value " ; comment`n# comment`n`n[CUAlink]`n UseConfig = false "
-    if ((Read-LinkConfig $temp).UseConfig) { throw 'Whitespace/comment parsing failed' }
+    Set-Content -LiteralPath $temp -Encoding UTF8 -Value " ; comment`n# comment`n`n[CUAlink]`n SshHost = "
+    if ((Read-LinkConfig $temp).IsPreset) { throw 'Whitespace/comment parsing failed' }
     $copy=$valid.Clone(); $copy.BearerToken=('a'*32+'=;#'); Check-Config $copy $true
     if ((Read-LinkConfig $temp).BearerToken -ne $copy.BearerToken) { throw 'Token punctuation was altered' }
     $template=Read-LinkConfig (Join-Path $PSScriptRoot '../config.example.ini')
-    if ($template.UseConfig -or $template.BearerToken -or $template.SshHost -or $template.SshUser) { throw 'Unsafe template defaults' }
+    if ($template.IsPreset) { throw 'Unsafe template defaults' }
+    if ((Get-Content (Join-Path $PSScriptRoot '../config.example.ini') -Raw) -match '(?m)^\s*[;#]|UseConfig') { throw 'Template should be clean and switch-free' }
 } finally { Remove-Item -LiteralPath $temp -Force }
 foreach ($port in -1,65536) {
     $rejected=$false
