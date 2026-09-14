@@ -13,12 +13,22 @@ import shutil
 import subprocess
 import tarfile
 import urllib.request
+import urllib.parse
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED = {'MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'Zlib',
            'Unicode-3.0', 'Unicode-DFS-2016', 'CC0-1.0', 'Unlicense', 'MPL-2.0',
-           'BSL-1.0', '0BSD'}
+           'BSL-1.0', '0BSD', 'MIT-0', 'CDLA-Permissive-2.0'}
+TREE_CACHE = {}
+
+
+class NoCrossHostCredentials(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        result = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if result and urllib.parse.urlparse(req.full_url).netloc != urllib.parse.urlparse(newurl).netloc:
+            result.remove_header('Authorization')
+        return result
 
 
 def fetch(url):
@@ -26,8 +36,41 @@ def fetch(url):
     # Never forward the GitHub token to release redirects or third-party hosts.
     if url.startswith('https://api.github.com/') and os.getenv('GH_TOKEN'):
         headers['Authorization'] = 'Bearer ' + os.environ['GH_TOKEN']
-    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=120) as r:
+    with urllib.request.build_opener(NoCrossHostCredentials).open(urllib.request.Request(url, headers=headers), timeout=120) as r:
         return r.read()
+
+
+def recover_notices(package, base, target):
+    """Some crates omit monorepo-root licenses; recover only at their recorded commit."""
+    vcs_file = base / '.cargo_vcs_info.json'
+    repo = (package.get('repository') or '').removesuffix('/').removesuffix('.git')
+    match = re.fullmatch(r'https://github.com/([\w.-]+/[\w.-]+)', repo)
+    if not match or not vcs_file.exists():
+        return []
+    vcs = json.loads(vcs_file.read_text())
+    commit = vcs.get('git', {}).get('sha1', '')
+    if not re.fullmatch(r'[0-9a-f]{40}', commit):
+        return []
+    repository = match[1]
+    key = (repository, commit)
+    if key not in TREE_CACHE:
+        TREE_CACHE[key] = json.loads(fetch(f'https://api.github.com/repos/{repository}/git/trees/{commit}?recursive=1'))
+    tree = TREE_CACHE[key]
+    if tree.get('truncated'):
+        raise RuntimeError(f'Truncated source tree for {repository}; review required')
+    from pathlib import PurePosixPath
+    directory = PurePosixPath(vcs.get('path_in_vcs') or '.')
+    ancestors = {str(directory), *(str(p) for p in directory.parents)}
+    origins = []
+    for entry in tree['tree']:
+        path = PurePosixPath(entry['path'])
+        if entry['type'] == 'blob' and str(path.parent) in ancestors and re.match(r'(?i)^(licen[cs]e|copying|notice|copyright)', path.name):
+            url = f'https://raw.githubusercontent.com/{repository}/{commit}/{entry["path"]}'
+            (target / entry['path'].replace('/', '__')).write_bytes(fetch(url))
+            origins.append(url)
+    if origins:
+        (target / 'UPSTREAM-SOURCES.txt').write_text('\n'.join(origins)+'\n', encoding='utf-8')
+    return origins
 
 
 def license_allowed(expression):
@@ -118,14 +161,14 @@ def build(tag):
         files = [p for p in base.iterdir() if p.is_file() and re.match(r'(?i)^(licen[cs]e|copying|notice|copyright)', p.name)]
         if package.get('license_file'):
             files.append(base / package['license_file'])
-        if not files:
-            problems.append(f"{package['name']}: no license/notice file; manual review required")
         target = licenses / (package['name'] + '-' + package['version'])
         target.mkdir(exist_ok=True)
         for f in set(files):
             if f.is_file():
                 shutil.copy2(f, target / f.name)
-        notices.append(f"## {package['name']} {package['version']}\nLicense: {expression}\nSource: {package['source']}\n")
+        if not files and not recover_notices(package, base, target):
+            problems.append(f"{package['name']}: no license/notice file; manual review required")
+        notices.append(f"## {package['name']} {package['version']}\nLicense: {expression}\nSource: https://crates.io/api/v1/crates/{package['name']}/{package['version']}/download\n")
     # Node runtime has a separate MPL boundary. Preserve notice + exact source/build pointers.
     notices.append(f'''## cua_driver_node_runtime.node
 License: MPL-2.0. Corresponding source and deterministic build transformations:
